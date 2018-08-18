@@ -13,6 +13,10 @@ void CPU::regs_init()
    regs.hl = 0x014D;
    regs.sp = 0xFFFE;
    regs.pc = 0x0100;
+
+   ime = false;
+
+   internal_cycle_counter = 0;
 }
 
 void CPU::ram_init()
@@ -61,6 +65,32 @@ void CPU::ram_init()
 	}
 }
 
+void CPU::io_init()
+{
+	auto port = [&] (R16 id) {
+		return &ram[id];
+	};
+
+	io.timers = {
+		.div = port(0xFF04)
+	};
+
+	io.lcd = {
+		.control = port(0xFF40),
+		.status = port(0xFF41),
+		.bg_scrollx = port(0xFF42),
+		.bg_scrolly = port(0xFF43),
+		.active_row = port(0xFF44),
+		.active_row_trigger = port(0xFF45),
+		.windowx = port(0xFF4A),
+		.windowy = port(0xFF4B),
+		.palette_data = port(0xFF47),
+		.object_palette0_data = port(0xFF48),
+		.object_palette1_data = port(0xFF49),
+		.dma_start_address = port(0xFF46)
+	};
+}
+
 R8 CPU::fetch_pc_byte(unsigned off)
 {
 	auto data = mem_fetch(regs.pc + off);
@@ -87,6 +117,7 @@ void CPU::boot(const ROMFile& file)
 
 	regs_init();
 	ram_init();
+	io_init();
 	rom = &file.rom;
 }
 
@@ -131,12 +162,15 @@ uint8_t CPU::mem_fetch(Addr address)
 	}
 	else if (address >= 0xFF00 && address <= 0xFF7F)
 	{
-		std::cout << "Stub: I/O memory\n";
-		return ram[address];
+		return port_read(address);
 	}
 	else if (address >= 0xFF80 && address <= 0xFFFE)
 	{
 		return ram[address];
+	}
+	else if (address == 0xFFFF)
+	{
+		return port_read(address);
 	}
 	else
 	{
@@ -185,16 +219,54 @@ void CPU::mem_write(Addr address, R8 data)
 	}
 	else if (address >= 0xFF00 && address <= 0xFF7F)
 	{
-		std::cout << "Stub: I/O memory\n";
-		ram[address] = data;
+		port_write(address, data);
 	}
 	else if (address >= 0xFF80 && address <= 0xFFFE)
 	{
 		ram[address] = data;
 	}
+	else if (address == 0xFFFF)
+	{
+		port_write(address, data);
+	}
 	else
 	{
 		throw std::runtime_error("Unhandled memory: Unknown area");
+	}
+}
+
+void CPU::port_write(R16 port, R8 data)
+{
+	switch (port)
+	{
+	case 0xFF04: {
+		*io.timers.div = 0;
+	} break;
+
+	case 0xFF0F: // IF
+	case 0xFFFF: // IE
+		ram[0xFF00 + port] = data;
+		break;
+
+	default:
+		std::cout << "Failed write to port " << debug_hex(port) << '\n';
+		throw std::runtime_error("Write to unexisting or unhandled port");
+	};
+}
+
+R8 CPU::port_read(R16 port)
+{
+	switch (port)
+	{
+	case 0xFF04: // DIV
+	case 0xFF0F: // IF
+	case 0xFFFF: // IE
+		return ram[0xFF00];
+		break;
+
+	default:
+		std::cout << "Failed read from port " << debug_hex(port) << '\n';
+		throw std::runtime_error("Read from unexisting or unhandled port");
 	}
 }
 
@@ -206,10 +278,15 @@ void CPU::execute()
 		{
 			next_pc = regs.pc;
 			const Opcode op = opcodes[fetch_pc_byte()];
-			cycles_taken = 0;
 			std::cout << "Op: " << op.mnemonic << "\n";
 			op.run(*this);
 			regs.pc = next_pc;
+			if (internal_cycle_counter > 255)
+			{
+				internal_cycle_counter %= 256;
+				std::cout << "Ticked clock\n";
+				++(*io.timers.div);
+			}
 		}
 	}
 	catch (const std::runtime_error& e)

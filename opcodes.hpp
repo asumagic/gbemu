@@ -75,11 +75,11 @@ void ijp(CPU& cpu)
 	if (cond(cpu))
 	{
 		cpu.next_pc = target;
-		cpu.cycles_taken = cycles_branch;
+		cpu.internal_cycle_counter += cycles_branch;
 	}
 	else
 	{
-		cpu.cycles_taken = cycles_no_branch;
+		cpu.internal_cycle_counter += cycles_no_branch;
 	}
 }
 
@@ -91,11 +91,11 @@ void ijr(CPU& cpu)
 	if (cond(cpu))
 	{
 		cpu.next_pc = cpu.regs.pc + (off + 2);
-		cpu.cycles_taken = cycles_branch;
+		cpu.internal_cycle_counter += cycles_branch;
 	}
 	else
 	{
-		cpu.cycles_taken = cycles_no_branch;
+		cpu.internal_cycle_counter += cycles_no_branch;
 	}
 }
 
@@ -103,7 +103,7 @@ template<R8(&src)(CPU&), size_t cycles>
 void ixor(CPU& cpu)
 {
 	cpu.regs.a ^= src(cpu);
-	cpu.cycles_taken = cycles;
+	cpu.internal_cycle_counter += cycles;
 	cpu.regs.set_flags({.z = cpu.regs.a == 0});
 }
 
@@ -111,24 +111,41 @@ template<class Reg, void(&dst_setter)(CPU&, Reg), Reg(&src)(CPU&), size_t cycles
 void ild(CPU& cpu)
 {
 	dst_setter(cpu, src(cpu));
-	cpu.cycles_taken = cycles;
+	cpu.internal_cycle_counter += cycles;
 }
 
 template<class Reg, void(&dst_setter)(CPU&, Reg), Reg(&src)(CPU&), size_t cycles>
 void idec(CPU& cpu)
 {
 	dst_setter(cpu, src(cpu) - 1);
-	cpu.cycles_taken = cycles;
+	cpu.internal_cycle_counter += cycles;
 	cpu.regs.set_flags({
 		.z = src(cpu) == 0,
 		.n = 1,
 		.h = /* TODO */0
 	});
+
+	std::cout << "Stub: half-carry\n";
 }
 
-inline void idi(CPU&)
+inline void idi(CPU& cpu)
 {
-	std::cout << "Stub: DI\n";
+	cpu.ime = false;
+}
+
+template<R8(&src)(CPU&), size_t cycles>
+void icp(CPU& cpu)
+{
+	auto diff = cpu.regs.a - src(cpu);
+
+	cpu.regs.set_flags({
+		.z = diff == 0,
+		.n = 1,
+		.h = /* TODO */0,
+		.c = /* TODO */0
+	});
+
+	std::cout << "Stub: half-carry, carry\n";
 }
 
 constexpr auto generate_opcode_list()
@@ -175,10 +192,12 @@ constexpr auto generate_opcode_list()
 	mk(0xEC, ibad);
 	mk(0xED, ibad);
 
+	mk(0xF0, {"LDH A,(a8)", ild<R8, a, mem_high_d8, 12>});
 	mk(0xF3, {"DI", idi});
 	mk(0xF4, ibad);
 	mk(0xFC, ibad);
 	mk(0xFD, ibad);
+	mk(0xFE, {"CP d8", icp<d8, 8>});
 
 	return ops;
 }
