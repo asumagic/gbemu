@@ -5,28 +5,10 @@
 #include <string_view>
 #include "common.hpp"
 
-struct RegisterName
+struct Flags
 {
-	std::string_view name;
-	unsigned id;
+	bool z = false, n = false, h = false, c = false;
 };
-
-constexpr std::array<RegisterName, 7> named_regs8 {{
-	{"b", 0b000},
-	{"c", 0b001},
-	{"d", 0b010},
-	{"e", 0b011},
-	{"h", 0b100},
-	{"l", 0b101},
-	{"a", 0b111},
-}};
-
-constexpr std::array<RegisterName, 4> named_regs16 {{
-	{"bc", 0b000},
-	{"de", 0b010},
-	{"hl", 0b100},
-	{"sp", 0b110}
-}};
 
 class RegisterFile
 {
@@ -36,39 +18,35 @@ class RegisterFile
 public:
 
 	R16 af, bc, de, hl, sp, pc;
-	R8 &a{high(af)}, /*&f{low(af)},*/
+	R8 &a{high(af)}, &f{low(af)},
 	   &b{high(bc)}, &c{low(bc)},
 	   &d{high(de)}, &e{low(de)},
 	   &h{high(hl)}, &l{low(hl)};
 
 	void dump();
 
-	R8* reg8(unsigned id)
-	{
-		switch (id)
-		{
-		case 0b111: return &a;
-		case 0b000: return &b;
-		case 0b001: return &c;
-		case 0b010: return &d;
-		case 0b011: return &e;
-		case 0b100: return &h;
-		case 0b101: return &l;
-		default: return nullptr;
-		}
-	}
-
-	R16* reg16(unsigned id)
-	{
-		switch (id)
-		{
-		case 0b000: return &bc;
-		case 0b010: return &de;
-		case 0b100: return &hl;
-		case 0b110: return &sp;
-		default: return nullptr;
-		}
-	}
+	void set_flags(Flags flags);
+	Flags get_flags();
 };
+
+inline void RegisterFile::set_flags(Flags flags)
+{
+	const auto [z, n, h, c] = flags;
+
+	// It is okay to override the 4 lower bits because they're assumed to be always zero.
+	// TODO: enforce the 4 lower bits of F to be zero all the time.
+	f = (z << 7) | (n << 6) | (h << 5) | (c << 4);
+}
+
+inline Flags RegisterFile::get_flags()
+{
+	return {
+		.z = (f & (1 << 7)) != 0,
+		.n = (f & (1 << 6)) != 0,
+		.h = (f & (1 << 5)) != 0,
+		.c = (f & (1 << 4)) != 0
+	};
+}
+
 
 #endif // REGISTER_HPP

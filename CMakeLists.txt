@@ -8,4 +8,4 @@ add_executable(${PROJECT_NAME}
 	"register.cpp"
 )
 
-set(CMAKE_CXX_FLAGS "-std=c++1z -Wall -Wextra -Wpedantic")
+set(CMAKE_CXX_FLAGS "-std=c++2a -Wall -Wextra -Wpedantic -Wno-c99-extensions")

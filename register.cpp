@@ -6,7 +6,9 @@
 
 void RegisterFile::dump()
 {
-	std::cout << "AF: " << debug_hex(af) << '\n';
+	const auto [z, n, h, c] = get_flags();
+
+	std::cout << "AF: " << debug_hex(af) << " (z=" << z << ", n=" << n << ", h=" << h << ", c=" << c << ")\n";
 	std::cout << "BC: " << debug_hex(bc) << '\n';
 	std::cout << "DE: " << debug_hex(de) << '\n';
 	std::cout << "HL: " << debug_hex(hl) << '\n';
