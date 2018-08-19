@@ -6,6 +6,7 @@ add_executable(${PROJECT_NAME}
 	"romfile.cpp"
 	"cpu.cpp"
 	"register.cpp"
+	"video.cpp"
 )
 
 set(CMAKE_CXX_FLAGS "-std=c++2a -Wall -Wextra -Wpedantic -Wno-c99-extensions")

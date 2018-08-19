@@ -45,7 +45,6 @@ void CPU::ram_init()
 		{0xFF23, 0xBF}, // NR30
 		{0xFF24, 0x77}, // NR50
 		{0xFF25, 0xF3}, // NR51
-		// TODO: [$FF26] = $F1-GB, $F0-SGB ; NR52
 		{0xFF26, 0xF1}, // NR52
 		{0xFF40, 0x91}, // LCDC
 		{0xFF42, 0x00}, // SCY
@@ -65,31 +64,9 @@ void CPU::ram_init()
 	}
 }
 
-void CPU::io_init()
-{
-	auto port = [&] (R16 id) {
-		return &ram[id];
-	};
-
-	io.timers = {
-		.div = port(0xFF04)
-	};
-
-	io.lcd = {
-		.control = port(0xFF40),
-		.status = port(0xFF41),
-		.bg_scrollx = port(0xFF42),
-		.bg_scrolly = port(0xFF43),
-		.active_row = port(0xFF44),
-		.active_row_trigger = port(0xFF45),
-		.windowx = port(0xFF4A),
-		.windowy = port(0xFF4B),
-		.palette_data = port(0xFF47),
-		.object_palette0_data = port(0xFF48),
-		.object_palette1_data = port(0xFF49),
-		.dma_start_address = port(0xFF46)
-	};
-}
+CPU::CPU() :
+	video{*this}
+{}
 
 R8 CPU::fetch_pc_byte(unsigned off)
 {
@@ -117,7 +94,6 @@ void CPU::boot(const ROMFile& file)
 
 	regs_init();
 	ram_init();
-	io_init();
 	rom = &file.rom;
 }
 
@@ -235,39 +211,58 @@ void CPU::mem_write(Addr address, R8 data)
 	}
 }
 
-void CPU::port_write(R16 port, R8 data)
+void CPU::port_write(R16 dst, R8 data)
 {
+	std::cout << "CPU >>>> " << debug_hex(dst) << "\n";
+
+	auto port = static_cast<Port>(dst);
 	switch (port)
 	{
-	case 0xFF04: {
-		*io.timers.div = 0;
+	case Port::timer_div:
+		ram[dst] = 0;
+		break;
+
+	case Port::lcd_status: {
+		video.set_status(data);
 	} break;
 
-	case 0xFF0F: // IF
-	case 0xFFFF: // IE
-		ram[0xFF00 + port] = data;
+	case Port::interrupt_flag:
+	case Port::interrupt_enable:
+	case Port::lcd_bg_scrollx:
+	case Port::lcd_bg_scrolly:
+		ram[dst] = data;
 		break;
 
 	default:
-		std::cout << "Failed write to port " << debug_hex(port) << '\n';
+		std::cout << "Failed write to port " << debug_hex(dst) << '\n';
 		throw std::runtime_error("Write to unexisting or unhandled port");
 	};
 }
 
-R8 CPU::port_read(R16 port)
+R8 CPU::port_read(R16 src)
 {
+	std::cout << "CPU <<<< " << debug_hex(src) << "\n";
+
+	auto port = static_cast<Port>(src);
 	switch (port)
 	{
-	case 0xFF04: // DIV
-	case 0xFF0F: // IF
-	case 0xFFFF: // IE
-		return ram[0xFF00];
+	case Port::timer_div:
+	case Port::interrupt_flag:
+	case Port::interrupt_enable:
+	case Port::lcd_bg_scrollx:
+	case Port::lcd_bg_scrolly:
+		return ram[src];
 		break;
 
 	default:
-		std::cout << "Failed read from port " << debug_hex(port) << '\n';
+		std::cout << "Failed read from port " << debug_hex(src) << '\n';
 		throw std::runtime_error("Read from unexisting or unhandled port");
 	}
+}
+
+R8& CPU::port_ram(Port port)
+{
+	return ram[static_cast<R16>(port)];
 }
 
 void CPU::execute()
@@ -285,7 +280,7 @@ void CPU::execute()
 			{
 				internal_cycle_counter %= 256;
 				std::cout << "Ticked clock\n";
-				++(*io.timers.div);
+				++port_ram(Port::timer_div);
 			}
 		}
 	}
